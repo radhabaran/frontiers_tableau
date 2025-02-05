@@ -1,4 +1,15 @@
 # template_metadata.py
+#
+# This TemplateMetadata class is a metadata manager for Tableau templates.
+# *************************************************************************************
+#
+# Main Features:
+#   Stores metadata in a dictionary structure
+#   Tracks data sources, calculations, parameters, and other template information
+#   Handles creation dates and versioning
+#   Provides JSON import/export functionality
+# ************************************************************************************
+
 
 from typing import Dict, List
 import json

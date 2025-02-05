@@ -61,13 +61,93 @@ class TemplateBuilder:
 
     def create_product_dashboard(self) -> None:
         """Create product analytics dashboard template"""
-        # Similar implementation for product dashboard
-        pass
+        try:
+            # Get data
+            data_sources = self.connector.get_data_source()
+
+            # Create metadata
+            metadata = TemplateMetadata('product_dashboard')
+            metadata.add_data_source({
+                'name': 'product_data',
+                'type': 'extract',
+                'tables': list(data_sources.keys())
+            })
+
+            # Add product-specific calculations
+            product_calcs = {
+                'Product_Revenue': 'SUM([quantity] * [unit_price])',
+                'Product_Profit_Margin': '([revenue] - [cost]) / [revenue]',
+                'Units_Sold': 'SUM([quantity])',
+                'Average_Price': 'AVG([unit_price])',
+                'Stock_Turnover': 'SUM([quantity_sold]) / AVG([inventory_level])'
+            }
+
+            for name, formula in product_calcs.items():
+                metadata.add_calculation({
+                    'name': name,
+                    'formula': formula,
+                    'description': f'Product analysis: {name}'
+                })
+
+            # Validate template
+            self.validator.validate_data_source(data_sources)
+            self.validator.test_calculations(self.calc_library)
+
+            # Store template information
+            self.templates['product_dashboard'] = {
+                'metadata': metadata,
+                'validation': self.validator.get_validation_report()
+            }
+
+            self.logger.info("Product dashboard template created successfully")
+
+        except Exception as e:
+            self.logger.error(f"Failed to create product dashboard: {str(e)}")
 
     def create_regional_dashboard(self) -> None:
         """Create regional performance dashboard template"""
-        # Similar implementation for regional dashboard
-        pass
+        try:
+            # Get data
+            data_sources = self.connector.get_data_source()
+
+            # Create metadata
+            metadata = TemplateMetadata('regional_dashboard')
+            metadata.add_data_source({
+                'name': 'regional_data',
+                'type': 'extract',
+                'tables': list(data_sources.keys())
+            })
+
+            # Add region-specific calculations
+            regional_calcs = {
+                'Regional_Revenue': 'SUM([quantity] * [unit_price])',
+                'Regional_Market_Share': 'SUM([revenue]) / TOTAL(SUM([revenue]))',
+                'Regional_Growth': '([Current Period Sales] - [Previous Period Sales]) / [Previous Period Sales]',
+                'Regional_Customer_Count': 'COUNT(DISTINCT [customer_id])',
+                'Average_Order_Value': 'SUM([revenue]) / COUNT(DISTINCT [order_id])'
+            }
+
+            for name, formula in regional_calcs.items():
+                metadata.add_calculation({
+                    'name': name,
+                    'formula': formula,
+                    'description': f'Regional analysis: {name}'
+                })
+
+            # Validate template
+            self.validator.validate_data_source(data_sources)
+            self.validator.test_calculations(self.calc_library)
+
+            # Store template information
+            self.templates['regional_dashboard'] = {
+                'metadata': metadata,
+                'validation': self.validator.get_validation_report()
+            }
+
+            self.logger.info("Regional dashboard template created successfully")
+
+        except Exception as e:
+            self.logger.error(f"Failed to create regional dashboard: {str(e)}")
 
     def export_templates(self, output_dir: str) -> None:
         """Export all templates and metadata"""
