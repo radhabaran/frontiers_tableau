@@ -24,27 +24,26 @@
 #       Regional and channel diversity
 # ****************************************************************************************
 
-import pandas as pd
-import numpy as np
+import sqlite3
 from datetime import datetime, timedelta
-import psycopg2
 import random
+from pathlib import Path
 
-# Database connection parameters
-DB_PARAMS = {
-    'database': 'sports_ecomm',
-    'user': 'postgres',
-    'password': 'your_password',
-    'host': 'localhost',
-    'port': '5432'
-}
+# Database file name
+DB_FILE = 'sports_ecomm.db'
 
+def get_db_connection():
+    """Create a database connection"""
+    return sqlite3.connect(DB_FILE, detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
 
 def generate_date_dimension():
     """Generate date dimension data for 10 years"""
     try:
-        conn = psycopg2.connect(**DB_PARAMS)
+        conn = get_db_connection()
         cursor = conn.cursor()
+
+        # Clear existing dates
+        cursor.execute("DELETE FROM dimension_dates")
 
         start_date = datetime(2015, 1, 1)
         end_date = datetime(2024, 12, 31)
@@ -65,7 +64,7 @@ def generate_date_dimension():
             cursor.execute("""
                 INSERT INTO dimension_dates 
                 (full_date, year, month, day, day_of_week, quarter, season)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
                 current_date.date(),
                 current_date.year,
@@ -85,15 +84,16 @@ def generate_date_dimension():
         print(f"Error generating date dimension: {str(e)}")
 
     finally:
-        cursor.close()
         conn.close()
-
 
 def generate_sales_data():
     """Generate sales data with realistic patterns"""
     try:
-        conn = psycopg2.connect(**DB_PARAMS)
+        conn = get_db_connection()
         cursor = conn.cursor()
+
+        # Clear existing sales data
+        cursor.execute("DELETE FROM fact_daily_sales")
 
         # Get all dates
         cursor.execute("SELECT date_id, full_date, month, day_of_week FROM dimension_dates")
@@ -107,6 +107,9 @@ def generate_sales_data():
         channels = ['online', 'store']
 
         total_records = 0
+        batch_size = 1000
+        batch_data = []
+
         # Generate sales data
         for date in dates:
             date_id, full_date, month, day_of_week = date
@@ -143,12 +146,7 @@ def generate_sales_data():
                     unit_price = base_price * (1 - discount)
                     total_price = unit_price * quantity
 
-                    cursor.execute("""
-                        INSERT INTO fact_daily_sales 
-                        (product_id, date_id, quantity_sold, unit_price, total_price, 
-                         discount_applied, channel, region)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (
+                    batch_data.append((
                         product_id,
                         date_id,
                         quantity,
@@ -160,26 +158,40 @@ def generate_sales_data():
                     ))
                     total_records += 1
 
-                    # Commit every 10000 records to avoid memory issues
-                    if total_records % 10000 == 0:
+                    # Batch insert
+                    if len(batch_data) >= batch_size:
+                        cursor.executemany("""
+                            INSERT INTO fact_daily_sales 
+                            (product_id, date_id, quantity_sold, unit_price, total_price, 
+                             discount_applied, channel, region)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, batch_data)
                         conn.commit()
                         print(f"Generated {total_records} sales records...")
+                        batch_data = []
 
-        conn.commit()
+        # Insert remaining records
+        if batch_data:
+            cursor.executemany("""
+                INSERT INTO fact_daily_sales 
+                (product_id, date_id, quantity_sold, unit_price, total_price, 
+                 discount_applied, channel, region)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, batch_data)
+            conn.commit()
+
         print(f"Sales data generation completed. Total records: {total_records}")
 
     except Exception as e:
         print(f"Error generating sales data: {str(e)}")
 
     finally:
-        cursor.close()
         conn.close()
-
 
 def verify_data():
     """Verify the generated data"""
     try:
-        conn = psycopg2.connect(**DB_PARAMS)
+        conn = get_db_connection()
         cursor = conn.cursor()
 
         print("\nData Verification:")
@@ -208,7 +220,7 @@ def verify_data():
 
         # Sample of total revenue by year
         cursor.execute("""
-            SELECT d.year, ROUND(SUM(s.total_price)::numeric, 2) as total_revenue
+            SELECT d.year, ROUND(SUM(s.total_price), 2) as total_revenue
             FROM fact_daily_sales s
             JOIN dimension_dates d ON s.date_id = d.date_id
             GROUP BY d.year
@@ -222,11 +234,13 @@ def verify_data():
         print(f"Error verifying data: {str(e)}")
 
     finally:
-        cursor.close()
         conn.close()
 
-
 if __name__ == "__main__":
+    if not Path(DB_FILE).exists():
+        print("Database file not found. Please run db_setup.py first.")
+        exit(1)
+
     print("Starting data generation process...")
     print("\nStep 1: Generating date dimension...")
     generate_date_dimension()

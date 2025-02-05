@@ -1,98 +1,76 @@
 # db_setup.py
 # ** database setup and tables creation
 
-import pandas as pd
-import numpy as np
+import sqlite3
 from datetime import datetime, timedelta
-import psycopg2
-from sqlalchemy import create_engine
 import random
 
-# Database connection parameters
-DB_PARAMS = {
-    'database': 'sports_ecomm',
-    'user': 'postgres',
-    'password': 'your_password',
-    'host': 'localhost',
-    'port': '5432'
-}
+# Database file name
+DB_FILE = 'sports_ecomm.db'
 
-
-# Create database connection
 def create_database():
-    # Connect to default postgres database first
-    conn = psycopg2.connect(
-        database="postgres",
-        user=DB_PARAMS['user'],
-        password=DB_PARAMS['password'],
-        host=DB_PARAMS['host']
-    )
-    conn.autocommit = True
-    cursor = conn.cursor()
-
-    # Create database if it doesn't exist
-    cursor.execute("DROP DATABASE IF EXISTS sports_ecomm")
-    cursor.execute("CREATE DATABASE sports_ecomm")
-
-    cursor.close()
+    """Create new SQLite database file"""
+    conn = sqlite3.connect(DB_FILE)
     conn.close()
+    print(f"Database created: {DB_FILE}")
 
-
-# Create tables
 def create_tables():
-    conn = psycopg2.connect(**DB_PARAMS)
+    """Create required tables"""
+    conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
     # Create dimension_products table
     cursor.execute("""
-        CREATE TABLE dimension_products (
-            product_id SERIAL PRIMARY KEY,
-            product_name VARCHAR(100),
+        CREATE TABLE IF NOT EXISTS dimension_products (
+            product_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_name TEXT,
             category_id INTEGER,
             base_price DECIMAL(10,2),
-            brand VARCHAR(50),
-            gender VARCHAR(20),
-            size VARCHAR(10),
-            color VARCHAR(20)
+            brand TEXT,
+            gender TEXT,
+            size TEXT,
+            color TEXT
         )
     """)
 
     # Create dimension_dates table
     cursor.execute("""
-        CREATE TABLE dimension_dates (
-            date_id SERIAL PRIMARY KEY,
+        CREATE TABLE IF NOT EXISTS dimension_dates (
+            date_id INTEGER PRIMARY KEY AUTOINCREMENT,
             full_date DATE,
             year INTEGER,
             month INTEGER,
             day INTEGER,
             day_of_week INTEGER,
             quarter INTEGER,
-            season VARCHAR(20)
+            season TEXT
         )
     """)
 
     # Create fact_daily_sales table
     cursor.execute("""
-        CREATE TABLE fact_daily_sales (
-            sale_id SERIAL PRIMARY KEY,
-            product_id INTEGER REFERENCES dimension_products(product_id),
-            date_id INTEGER REFERENCES dimension_dates(date_id),
+        CREATE TABLE IF NOT EXISTS fact_daily_sales (
+            sale_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER,
+            date_id INTEGER,
             quantity_sold INTEGER,
             unit_price DECIMAL(10,2),
             total_price DECIMAL(10,2),
             discount_applied DECIMAL(5,2),
-            channel VARCHAR(20),
-            region VARCHAR(50)
+            channel TEXT,
+            region TEXT,
+            FOREIGN KEY (product_id) REFERENCES dimension_products(product_id),
+            FOREIGN KEY (date_id) REFERENCES dimension_dates(date_id)
         )
     """)
 
     conn.commit()
     cursor.close()
     conn.close()
+    print("Tables created successfully")
 
-
-# Generate product data
 def generate_product_data():
+    """Generate initial product data"""
     products = [
         ("Nike Running Shoes", 1, 129.99, "Nike", "Unisex"),
         ("Adidas Performance Shorts", 2, 39.99, "Adidas", "Unisex"),
@@ -106,22 +84,29 @@ def generate_product_data():
         ("Fitbit Charge", 10, 149.99, "Fitbit", "Unisex")
     ]
 
-    conn = psycopg2.connect(**DB_PARAMS)
+    conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
-    for product in products:
-        cursor.execute("""
-            INSERT INTO dimension_products (product_name, category_id, base_price, brand, gender)
-            VALUES (%s, %s, %s, %s, %s)
-        """, product)
+    # Clear existing data
+    cursor.execute("DELETE FROM dimension_products")
+
+    # Insert new products
+    cursor.executemany("""
+        INSERT INTO dimension_products (product_name, category_id, base_price, brand, gender)
+        VALUES (?, ?, ?, ?, ?)
+    """, products)
 
     conn.commit()
     cursor.close()
     conn.close()
+    print("Product data generated successfully")
 
-
-# Initialize database and tables
-if __name__ == "__main__":
+def initialize_database():
+    """Initialize the database with all required tables and initial data"""
     create_database()
     create_tables()
     generate_product_data()
+    print("Database initialization completed")
+
+if __name__ == "__main__":
+    initialize_database()

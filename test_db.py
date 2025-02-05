@@ -14,27 +14,26 @@
 #   Discount impact
 #   Monthly trends
 # *****************************************************************************************
-import psycopg2
+import sqlite3
 import pandas as pd
 from tabulate import tabulate
+from pathlib import Path
 
-DB_PARAMS = {
-    'database': 'sports_ecomm',
-    'user': 'postgres',
-    'password': 'your_password',
-    'host': 'localhost',
-    'port': '5432'
-}
-
+# Database file name
+DB_FILE = 'sports_ecomm.db'
 
 def run_analysis():
-    conn = psycopg2.connect(**DB_PARAMS)
+    if not Path(DB_FILE).exists():
+        print(f"Database file {DB_FILE} not found!")
+        return
+
+    conn = sqlite3.connect(DB_FILE)
 
     queries = {
         "1. Top 5 Products by Revenue": """
             SELECT 
                 p.product_name,
-                ROUND(SUM(s.total_price)::numeric, 2) as total_revenue,
+                ROUND(SUM(s.total_price), 2) as total_revenue,
                 SUM(s.quantity_sold) as units_sold
             FROM fact_daily_sales s
             JOIN dimension_products p ON s.product_id = p.product_id
@@ -46,7 +45,7 @@ def run_analysis():
         "2. Yearly Revenue Trend": """
             SELECT 
                 d.year,
-                ROUND(SUM(s.total_price)::numeric, 2) as total_revenue,
+                ROUND(SUM(s.total_price), 2) as total_revenue,
                 COUNT(DISTINCT s.sale_id) as number_of_transactions
             FROM fact_daily_sales s
             JOIN dimension_dates d ON s.date_id = d.date_id
@@ -57,8 +56,8 @@ def run_analysis():
         "3. Seasonal Sales Pattern": """
             SELECT 
                 d.season,
-                ROUND(AVG(s.quantity_sold)::numeric, 2) as avg_daily_quantity,
-                ROUND(AVG(s.total_price)::numeric, 2) as avg_daily_revenue
+                ROUND(AVG(s.quantity_sold), 2) as avg_daily_quantity,
+                ROUND(AVG(s.total_price), 2) as avg_daily_revenue
             FROM fact_daily_sales s
             JOIN dimension_dates d ON s.date_id = d.date_id
             GROUP BY d.season
@@ -68,9 +67,9 @@ def run_analysis():
         "4. Channel Performance": """
             SELECT 
                 channel,
-                ROUND(SUM(total_price)::numeric, 2) as total_revenue,
+                ROUND(SUM(total_price), 2) as total_revenue,
                 COUNT(DISTINCT sale_id) as number_of_transactions,
-                ROUND(AVG(quantity_sold)::numeric, 2) as avg_quantity_per_transaction
+                ROUND(AVG(quantity_sold), 2) as avg_quantity_per_transaction
             FROM fact_daily_sales
             GROUP BY channel
         """,
@@ -78,7 +77,7 @@ def run_analysis():
         "5. Regional Sales Distribution": """
             SELECT 
                 region,
-                ROUND(SUM(total_price)::numeric, 2) as total_revenue,
+                ROUND(SUM(total_price), 2) as total_revenue,
                 COUNT(DISTINCT sale_id) as number_of_transactions
             FROM fact_daily_sales
             GROUP BY region
@@ -96,7 +95,7 @@ def run_analysis():
                     WHEN 5 THEN 'Saturday'
                     WHEN 6 THEN 'Sunday'
                 END as day_name,
-                ROUND(AVG(daily_revenue)::numeric, 2) as avg_daily_revenue
+                ROUND(AVG(daily_revenue), 2) as avg_daily_revenue
             FROM (
                 SELECT 
                     d.day_of_week,
@@ -118,8 +117,8 @@ def run_analysis():
                     WHEN discount_applied = 0.2 THEN '20% Discount'
                 END as discount_tier,
                 COUNT(*) as number_of_sales,
-                ROUND(AVG(quantity_sold)::numeric, 2) as avg_quantity_sold,
-                ROUND(SUM(total_price)::numeric, 2) as total_revenue
+                ROUND(AVG(quantity_sold), 2) as avg_quantity_sold,
+                ROUND(SUM(total_price), 2) as total_revenue
             FROM fact_daily_sales
             GROUP BY discount_applied
             ORDER BY discount_applied
@@ -128,7 +127,7 @@ def run_analysis():
         "8. Monthly Sales Trend (2024)": """
             SELECT 
                 d.month,
-                ROUND(SUM(s.total_price)::numeric, 2) as total_revenue,
+                ROUND(SUM(s.total_price), 2) as total_revenue,
                 SUM(s.quantity_sold) as total_quantity
             FROM fact_daily_sales s
             JOIN dimension_dates d ON s.date_id = d.date_id
@@ -138,19 +137,20 @@ def run_analysis():
         """
     }
 
-    for title, query in queries.items():
-        print(f"\n{title}")
-        print("-" * 80)
+    try:
+        for title, query in queries.items():
+            print(f"\n{title}")
+            print("-" * 80)
 
-        df = pd.read_sql_query(query, conn)
-        print(tabulate(df, headers='keys', tablefmt='psql', showindex=False))
-        print("\n")
+            df = pd.read_sql_query(query, conn)
+            print(tabulate(df, headers='keys', tablefmt='psql', showindex=False))
+            print("\n")
 
-    conn.close()
+    except Exception as e:
+        print(f"Error executing query: {str(e)}")
 
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
-    try:
-        run_analysis()
-    except Exception as e:
-        print(f"Error running analysis: {str(e)}")
+    run_analysis()
